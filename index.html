@@ -306,15 +306,20 @@ const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&
 const cfgKey='student_platform_tracker_cfg_v1';
 let cfg=(()=>{try{return JSON.parse(localStorage.getItem(cfgKey))||{main:'منصة متابعة الطلاب — Qureo & Sprix',sub:'إدارة ميت غمر التعليمية | مدرسة محمد هاشم النقيب الثانوية المشتركة',term:'متابعة تقدم الطلاب على المنصات التعليمية — العام الدراسي 2026/2027',report:'سجل متابعة تقدم الطلاب على المنصات التعليمية'}}catch(e){return {main:'منصة متابعة الطلاب — Qureo & Sprix',sub:'إدارة ميت غمر التعليمية | مدرسة محمد هاشم النقيب الثانوية المشتركة',term:'متابعة تقدم الطلاب على المنصات التعليمية — العام الدراسي 2026/2027',report:'سجل متابعة تقدم الطلاب على المنصات التعليمية'}}})();
 
-let TEACHERS=['منى عمر العيوطي','مروة محمد عامر','منى جلال السيد','أمال إبراهيم محمد معلمة بالحصة خدمات','السيدة عبد الحكيم عطا'];
+const teacherListKey='student_tracker_teachers_v1';
+const defaultTeachers=['منى عمر العيوطي','مروة محمد عامر','منى جلال السيد','أمال إبراهيم محمد معلمة بالحصة خدمات','السيدة عبد الحكيم عطا'];
 const SUPERVISOR='محمود محمد';
 const teacherCfgKey='student_tracker_teacher_access_v1';
-let teacherAccess=(()=>{try{return JSON.parse(localStorage.getItem(teacherCfgKey))||{assignments:{},passwords:{}}}catch(e){return {assignments:{},passwords:{}}}})();
+const normalizePassword=value=>String(value??'').normalize('NFKC').trim();
+const normalizeTeacherAccess=value=>{const source=value&&typeof value==='object'?value:{};const assignments=source.assignments&&typeof source.assignments==='object'?source.assignments:{};const passwords=source.passwords&&typeof source.passwords==='object'?source.passwords:{};return {assignments:Object.fromEntries(Object.entries(assignments).map(([name,list])=>[name,Array.isArray(list)?list.map(String):[]])),passwords:Object.fromEntries(Object.entries(passwords).map(([name,password])=>[name,normalizePassword(password)]))}};
+let TEACHERS=(()=>{try{const saved=JSON.parse(localStorage.getItem(teacherListKey));if(Array.isArray(saved)&&saved.length)return [...new Set(saved.map(v=>String(v).trim()).filter(Boolean))]}catch(e){}return [...defaultTeachers]})();
+let teacherAccess=(()=>{try{return normalizeTeacherAccess(JSON.parse(localStorage.getItem(teacherCfgKey)))}catch(e){return {assignments:{},passwords:{}}}})();
 let currentUser=null;
 function isSupervisor(){return currentUser===SUPERVISOR}
-function assignedClasses(name){return Array.isArray(teacherAccess.assignments?.[name])?teacherAccess.assignments[name]:[]}
+function assignedClasses(name){return Array.isArray(teacherAccess.assignments?.[name])?teacherAccess.assignments[name].filter(k=>Object.prototype.hasOwnProperty.call(db,k)):[]}
 function visibleClassKeys(){const keys=Object.keys(db);return isSupervisor()?keys:keys.filter(k=>assignedClasses(currentUser||'').includes(k))}
-function persistTeacherAccess(){localStorage.setItem(teacherCfgKey,JSON.stringify(teacherAccess))}
+function persistTeacherAccess(){try{teacherAccess=normalizeTeacherAccess(teacherAccess);localStorage.setItem(teacherCfgKey,JSON.stringify(teacherAccess))}catch(e){console.warn('تعذر حفظ إعدادات المعلمين',e)}}
+function persistTeachers(){try{localStorage.setItem(teacherListKey,JSON.stringify([...new Set(TEACHERS)]))}catch(e){console.warn('تعذر حفظ قائمة المعلمين',e)}}
 function renderTeacherCards(){
  const host=$('teacherCards');
  host.innerHTML=TEACHERS.map((t,i)=>`<button class="teacher-card" type="button" data-teacher="${esc(t)}"><span class="teacher-icon">👩‍🏫</span>${esc(t)}</button>`).join('')+
@@ -334,10 +339,10 @@ function enterAsTeacher(){
  if(!name)return;
  const pass=$('gatePassword').value;
  if(name===SUPERVISOR){
-   if(pass!==PASS){$('gateError').textContent='كلمة مرور المشرف العام غير صحيحة.';return}
+   if(normalizePassword(pass)!==normalizePassword(PASS)){$('gateError').textContent='كلمة مرور المشرف العام غير صحيحة.';return}
  }else{
    const expected=teacherAccess.passwords?.[name]||'';
-   if(expected && pass!==expected){$('gateError').textContent='كلمة المرور غير صحيحة. حاول مرة أخرى.';return}
+   if(expected && normalizePassword(pass)!==normalizePassword(expected)){ $('gateError').textContent='كلمة المرور غير صحيحة. حاول مرة أخرى.';return}
    if(!assignedClasses(name).length){$('gateError').textContent='لم يخصص المشرف فصولًا لهذا المعلم بعد. يرجى مراجعة المشرف العام.';return}
  }
  currentUser=name;
@@ -365,22 +370,60 @@ function buildTeacherManagement(){
 function saveTeacherManagement(){
  const nextAssignments={...teacherAccess.assignments},nextPasswords={...teacherAccess.passwords};
  for(const t of TEACHERS){
-   nextAssignments[t]=Array.from(document.querySelectorAll(`[data-teacher-class="${CSS.escape(t)}"]:checked`)).map(el=>el.value);
-   const field=document.querySelector(`[data-teacher-pass="${CSS.escape(t)}"]`);
-   if(field?.value)nextPasswords[t]=field.value;
+   const checked=[];
+   document.querySelectorAll('[data-teacher-class]').forEach(el=>{if(el.dataset.teacherClass===t&&el.checked)checked.push(el.value)});
+   nextAssignments[t]=checked;
+   const field=[...document.querySelectorAll('[data-teacher-pass]')].find(el=>el.dataset.teacherPass===t);
+   const entered=normalizePassword(field?.value||'');
+   if(entered)nextPasswords[t]=entered;
  }
- teacherAccess={assignments:nextAssignments,passwords:nextPasswords};
+ teacherAccess=normalizeTeacherAccess({assignments:nextAssignments,passwords:nextPasswords});
  persistTeacherAccess();
+ persistTeachers();
+ save();
 }
-function addTeacherByAdmin(){const field=$('newTeacherName'),name=(field?.value||'').trim();if(!name)return uiAlert('اكتب اسم المعلم أولًا.','بيانات ناقصة');if(name===SUPERVISOR||TEACHERS.includes(name))return uiAlert('هذا الاسم مسجل بالفعل.','المعلم موجود');TEACHERS.push(name);teacherAccess.assignments[name]=[];field.value='';renderTeacherCards();buildTeacherManagement()}
-document.addEventListener('click',e=>{if(e.target.id==='addTeacherBtn')addTeacherByAdmin();const b=e.target.closest('[data-remove-teacher]');if(b){const n=b.dataset.removeTeacher;TEACHERS=TEACHERS.filter(t=>t!==n);delete teacherAccess.assignments[n];delete teacherAccess.passwords[n];persistTeacherAccess();renderTeacherCards();buildTeacherManagement()}});
+function addTeacherByAdmin(){const field=$('newTeacherName'),name=(field?.value||'').trim();if(!name)return uiAlert('اكتب اسم المعلم أولًا.','بيانات ناقصة');if(name===SUPERVISOR||TEACHERS.includes(name))return uiAlert('هذا الاسم مسجل بالفعل.','المعلم موجود');TEACHERS.push(name);teacherAccess.assignments[name]=[];persistTeachers();persistTeacherAccess();field.value='';renderTeacherCards();buildTeacherManagement()}
+document.addEventListener('click',e=>{if(e.target.id==='addTeacherBtn')addTeacherByAdmin();const b=e.target.closest('[data-remove-teacher]');if(b){const n=b.dataset.removeTeacher;TEACHERS=TEACHERS.filter(t=>t!==n);delete teacherAccess.assignments[n];delete teacherAccess.passwords[n];persistTeacherAccess();persistTeachers();save();renderTeacherCards();buildTeacherManagement()}});
 function showDialog({title='رسالة النظام',message='',kind='alert',value='',password=false,okText='حسنًا',cancelText='إلغاء',danger=false}={}){return new Promise(resolve=>{const layer=$('uiDialog'),input=$('uiDialogInput'),actions=$('uiDialogActions');$('uiDialogTitle').textContent=title;$('uiDialogMessage').textContent=message;$('uiDialogMark').textContent=kind==='password'?'🔐':kind==='confirm'?'؟':kind==='prompt'?'✎':danger?'!':'✓';input.hidden=!(kind==='prompt'||kind==='password');input.type=password||kind==='password'?'password':'text';input.value=value||'';input.placeholder=kind==='password'?'أدخل كلمة المرور':kind==='prompt'?'اكتب هنا…':'';actions.innerHTML='';const finish=result=>{layer.classList.remove('open');layer.setAttribute('aria-hidden','true');document.removeEventListener('keydown',onKey);resolve(result)};const onKey=e=>{if(e.key==='Escape'){finish(kind==='alert'?true:kind==='confirm'?false:null)}if(e.key==='Enter'&&(kind==='prompt'||kind==='password')){e.preventDefault();finish(input.value)}};document.addEventListener('keydown',onKey);if(kind!=='alert'){const cancel=document.createElement('button');cancel.className='dialog-secondary';cancel.textContent=cancelText;cancel.onclick=()=>finish(kind==='confirm'?false:null);actions.appendChild(cancel)}const ok=document.createElement('button');ok.className=danger?'dialog-danger':'dialog-primary';ok.textContent=okText;ok.onclick=()=>finish(kind==='confirm'?true:(kind==='prompt'||kind==='password'?input.value:true));actions.appendChild(ok);layer.onclick=e=>{if(e.target===layer&&kind==='alert')finish(true)};layer.classList.add('open');layer.setAttribute('aria-hidden','false');setTimeout(()=>{if(!input.hidden){input.focus();input.select()}else ok.focus()},30)})}
 const uiAlert=(message,title='تنبيه')=>showDialog({title,message,kind:'alert'});
 const uiConfirm=(message,title='تأكيد الإجراء')=>showDialog({title,message,kind:'confirm',okText:'تأكيد',danger:true});
 const uiPrompt=(message,{password=false,title='إدخال البيانات',value=''}={})=>showDialog({title,message,kind:password?'password':'prompt',password,value,okText:'متابعة'});
-let cloudTimer=null,cloudBusy=false;function cloudUrl(){return(localStorage.getItem('student_tracker_cloud_url')||'').trim()}
-async function syncCloud(action='save'){const url=cloudUrl();if(!url||cloudBusy)return;cloudBusy=true;$('status').textContent='⟳ جارٍ المزامنة السحابية…';try{const res=await fetch(url+(action==='load'?(url.includes('?')?'&':'?')+'action=load':''),action==='save'?{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'save',data:{db,cfg,teacherAccess,teachers:TEACHERS,updatedAt:new Date().toISOString()}})}:{});if(!res.ok)throw Error('HTTP '+res.status);if(action==='load'){const raw=await res.json(),d=raw.data||raw;if(d.db&&typeof d.db==='object'){db=d.db;localStorage.setItem(KEY,JSON.stringify(db));if(d.cfg){cfg=d.cfg;localStorage.setItem(cfgKey,JSON.stringify(cfg))}if(d.teacherAccess){teacherAccess=d.teacherAccess;persistTeacherAccess()}if(Array.isArray(d.teachers))TEACHERS=d.teachers;active=Object.keys(db)[0]||active;render();renderTeacherCards()}}$('status').textContent='✓ تمت المزامنة السحابية'}catch(e){$('status').textContent='⚠ تعذرت المزامنة؛ البيانات المحلية محفوظة'}finally{cloudBusy=false}}
-function save(){try{localStorage.setItem(KEY,JSON.stringify(db));$('status').textContent='✓ تم الحفظ تلقائيًا على هذا الجهاز';clearTimeout(cloudTimer);if(cloudUrl())cloudTimer=setTimeout(()=>syncCloud('save'),700)}catch(e){$('status').textContent='تعذر الحفظ؛ صدّر نسخة احتياطية'}}
+let cloudTimer=null,cloudBusy=false,cloudQueued=false;
+function cloudUrl(){return(localStorage.getItem('student_tracker_cloud_url')||'').trim()}
+function cloudPayload(){const updatedAt=new Date().toISOString();return {action:'save',data:{db,cfg,teacherAccess,teachers:TEACHERS,updatedAt},updatedAt}}
+function flushCloudBeforeExit(){const url=cloudUrl();if(!url)return false;try{const payload=cloudPayload();localStorage.setItem('student_tracker_local_updated_at',payload.updatedAt);if(!navigator.sendBeacon)return false;return navigator.sendBeacon(url,new Blob([JSON.stringify(payload)],{type:'text/plain;charset=utf-8'}))}catch(e){return false}}
+async function syncCloud(action='save'){
+ const url=cloudUrl();if(!url)return;
+ if(cloudBusy){if(action==='save')cloudQueued=true;return}
+ cloudBusy=true;$('status').textContent='⟳ جارٍ المزامنة السحابية…';
+ const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),15000);
+ try{
+  if(action==='save'){
+   const payload=cloudPayload();localStorage.setItem('student_tracker_local_updated_at',payload.updatedAt);
+   const res=await fetch(url,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(payload),signal:controller.signal});
+   if(!res.ok)throw Error('HTTP '+res.status);
+  }else{
+   const res=await fetch(url+(url.includes('?')?'&':'?')+'action=load',{signal:controller.signal});
+   if(!res.ok)throw Error('HTTP '+res.status);
+   const raw=await res.json(),d=raw.data||raw;
+   const remoteTime=Date.parse(d.updatedAt||'')||0;
+   const localTime=Date.parse(localStorage.getItem('student_tracker_local_updated_at')||'')||0;
+   if(d.db&&typeof d.db==='object'&&(!localTime||!remoteTime||remoteTime>localTime)){
+    db=d.db;localStorage.setItem(KEY,JSON.stringify(db));
+    if(d.cfg){cfg=d.cfg;localStorage.setItem(cfgKey,JSON.stringify(cfg))}
+    if(d.teacherAccess){teacherAccess=normalizeTeacherAccess(d.teacherAccess);persistTeacherAccess()}
+    if(Array.isArray(d.teachers)&&d.teachers.length){TEACHERS=[...new Set(d.teachers.map(v=>String(v).trim()).filter(Boolean))];persistTeachers()}
+    active=Object.keys(db)[0]||active;render();renderTeacherCards();
+   }
+  }
+  $('status').textContent='✓ تمت المزامنة السحابية';
+ }catch(e){$('status').textContent=e.name==='AbortError'?'⚠ انتهت مهلة المزامنة؛ البيانات المحلية محفوظة':'⚠ تعذرت المزامنة؛ البيانات المحلية محفوظة';console.warn('Cloud sync error',e)}finally{
+  clearTimeout(timeout);cloudBusy=false;
+  if(cloudQueued){cloudQueued=false;clearTimeout(cloudTimer);cloudTimer=setTimeout(()=>syncCloud('save'),50)}
+ }
+}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(db));localStorage.setItem('student_tracker_local_updated_at',new Date().toISOString());$('status').textContent='✓ تم الحفظ تلقائيًا على هذا الجهاز';clearTimeout(cloudTimer);if(cloudUrl())cloudTimer=setTimeout(()=>syncCloud('save'),700)}catch(e){$('status').textContent='تعذر الحفظ؛ صدّر نسخة احتياطية'}}
+function handlePageExit(){stopTeacherAudio();flushCloudBeforeExit()}
 function isQureoClass(name){return /-1$/.test(name)||name==='6-2'}
 function isSprixClass(name){return /-2(?: مالية)?$/.test(name)}
 const accountOptions=[['','— اختر الحالة —'],['not_registered','غير مسجل'],['created','تم إنشاء الحساب'],['active','مفعل ونشط'],['follow','يحتاج متابعة'],['issue','مشكلة دخول / متوقف']];
@@ -401,13 +444,13 @@ $('rows').addEventListener('change',e=>{const el=e.target,j=Number(el.dataset.j)
 $('rows').addEventListener('input',e=>{const el=e.target,j=Number(el.dataset.j),tr=el.closest('tr');if(!tr||!Number.isInteger(j)||![1,2,15].includes(j))return;const r=db[active].students[Number(tr.dataset.i)];r[j]=el.value;save();if(j===2){} });
 $('rows').onclick=async e=>{if(e.target.classList.contains('remove')){const tr=e.target.closest('tr'),idx=Number(tr.dataset.i);if(await uiConfirm('سيتم حذف الطالب «'+(db[active].students[idx]?.[2]||'بدون اسم')+'» من هذا الفصل. هل تريد المتابعة؟','تأكيد حذف الطالب')){db[active].students.splice(idx,1);db[active].students.forEach((r,i)=>r[0]=i+1);save();render()}}};
 $('add').onclick=()=>{const n=db[active].students.length+1;db[active].students.push([n,'','', '', '', '',0,'','',0,'','','','','','']);save();render();const last=$('rows').lastElementChild;last?.querySelector('[data-j="1"]')?.focus()};
-$('new').onclick=async()=>{if(await uiPrompt('أدخل كلمة المرور لإضافة فصل جديد',{password:true,title:'التحقق من صلاحية إضافة فصل'})!==PASS){await uiAlert('كلمة المرور غير صحيحة. لم يتم إضافة الفصل.','تعذر التحقق');return}let name=await uiPrompt('اكتب اسم الفصل الجديد (مثال: 1-3 أو 6-2 مالية)',{title:'إضافة فصل جديد'});if(!name||!name.trim())return;name=name.trim();if(db[name])return uiAlert('هذا الفصل موجود بالفعل. اختر اسمًا مختلفًا.','الفصل موجود');db[name]={name,students:[]};active=name;save();render()};
-$('del').onclick=async()=>{if(await uiPrompt('أدخل كلمة المرور لتأكيد صلاحية حذف الفصل',{password:true,title:'التحقق من الصلاحية'})!==PASS){await uiAlert('كلمة المرور غير صحيحة.','تعذر التحقق');return}if(Object.keys(db).length<2)return uiAlert('لا يمكن حذف آخر فصل في السجل.','تعذر الحذف');if(await uiConfirm('سيتم حذف الفصل «'+active+'» وجميع بياناته من هذا المتصفح. هل تريد المتابعة؟','تأكيد حذف الفصل')){delete db[active];active=Object.keys(db)[0];save();render()}};
-$('imp').onclick=async()=>{if(await uiPrompt('أدخل كلمة المرور للسماح باستيراد بيانات المتابعة',{password:true,title:'صلاحية الاستيراد'})!==PASS)return uiAlert('كلمة المرور غير صحيحة.','تعذر التحقق');$('file').click()};
+$('new').onclick=async()=>{if(normalizePassword(await uiPrompt('أدخل كلمة المرور لإضافة فصل جديد',{password:true,title:'التحقق من صلاحية إضافة فصل'}))!==normalizePassword(PASS)){await uiAlert('كلمة المرور غير صحيحة. لم يتم إضافة الفصل.','تعذر التحقق');return}let name=await uiPrompt('اكتب اسم الفصل الجديد (مثال: 1-3 أو 6-2 مالية)',{title:'إضافة فصل جديد'});if(!name||!name.trim())return;name=name.trim();if(db[name])return uiAlert('هذا الفصل موجود بالفعل. اختر اسمًا مختلفًا.','الفصل موجود');db[name]={name,students:[]};active=name;save();render()};
+$('del').onclick=async()=>{if(normalizePassword(await uiPrompt('أدخل كلمة المرور لتأكيد صلاحية حذف الفصل',{password:true,title:'التحقق من الصلاحية'}))!==normalizePassword(PASS)){await uiAlert('كلمة المرور غير صحيحة.','تعذر التحقق');return}if(Object.keys(db).length<2)return uiAlert('لا يمكن حذف آخر فصل في السجل.','تعذر الحذف');if(await uiConfirm('سيتم حذف الفصل «'+active+'» وجميع بياناته من هذا المتصفح. هل تريد المتابعة؟','تأكيد حذف الفصل')){delete db[active];active=Object.keys(db)[0];save();render()}};
+$('imp').onclick=async()=>{if(normalizePassword(await uiPrompt('أدخل كلمة المرور للسماح باستيراد بيانات المتابعة',{password:true,title:'صلاحية الاستيراد'}))!==normalizePassword(PASS))return uiAlert('كلمة المرور غير صحيحة.','تعذر التحقق');$('file').click()};
 $('file').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{const x=JSON.parse(await f.text());if(x.students){const importedName=x.name||('فصل مستورد '+Date.now());x.name=importedName;db[importedName]=x;active=importedName}else Object.assign(db,x);for(const c of Object.values(db))for(const r of c.students||[])while(r.length<16)r.push('');save();render();await uiAlert('تم استيراد البيانات بنجاح.','اكتمل الاستيراد')}catch(err){await uiAlert('تعذر استيراد الملف. اختر نسخة JSON صالحة من المنصة.','فشل الاستيراد')}e.target.value=''};
 function downloadFile(name,data,type){const a=document.createElement('a'),u=URL.createObjectURL(new Blob([data],{type}));a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),1000)}
 $('exp').onclick=()=>downloadFile('متابعة_'+active+'.json',JSON.stringify(db[active],null,2),'application/json;charset=utf-8');$('backup').onclick=()=>downloadFile('نسخة_احتياطية_متابعة_الطلاب.json',JSON.stringify(db,null,2),'application/json;charset=utf-8');
-function openSettings(){return (async()=>{if(await uiPrompt('أدخل كلمة المرور لفتح لوحة إعدادات المنصة',{password:true,title:'تسجيل الدخول إلى لوحة التحكم'})!==PASS){await uiAlert('كلمة المرور غير صحيحة. لم يتم فتح الإعدادات.','تعذر تسجيل الدخول');return}for(const [id,key] of [['cfgMain','main'],['cfgSub','sub'],['cfgTerm','term'],['cfgReport','report']])$(id).value=cfg[key]||'';if($('cfgCloudUrl'))$('cfgCloudUrl').value=cloudUrl();buildTeacherManagement();$('settingsModal').classList.add('open');$('settingsModal').setAttribute('aria-hidden','false')})()}
+function openSettings(){return (async()=>{const entered=normalizePassword(await uiPrompt('أدخل كلمة المرور لفتح لوحة إعدادات المنصة',{password:true,title:'تسجيل الدخول إلى لوحة التحكم'}));if(entered!==normalizePassword(PASS)){await uiAlert('كلمة المرور غير صحيحة. لم يتم فتح الإعدادات.','تعذر تسجيل الدخول');return}for(const [id,key] of [['cfgMain','main'],['cfgSub','sub'],['cfgTerm','term'],['cfgReport','report']])$(id).value=cfg[key]||'';if($('cfgCloudUrl'))$('cfgCloudUrl').value=cloudUrl();buildTeacherManagement();$('settingsModal').classList.add('open');$('settingsModal').setAttribute('aria-hidden','false')})()}
 function closeSettings(){$('settingsModal').classList.remove('open');$('settingsModal').setAttribute('aria-hidden','true')}
 $('settings').onclick=openSettings;$('closeSettings').onclick=closeSettings;$('cancelSettings').onclick=closeSettings;$('settingsModal').onclick=e=>{if(e.target===$('settingsModal'))closeSettings()};
 $('saveSettings').onclick=async()=>{const next={main:$('cfgMain').value.trim(),sub:$('cfgSub').value.trim(),term:$('cfgTerm').value.trim(),report:$('cfgReport').value.trim()};if(Object.values(next).some(v=>!v))return uiAlert('يرجى استكمال جميع الحقول قبل الحفظ.','بيانات ناقصة');cfg=next;localStorage.setItem(cfgKey,JSON.stringify(cfg));localStorage.setItem('student_tracker_cloud_url',($('cfgCloudUrl')?.value||'').trim());saveTeacherManagement();render();closeSettings();await uiAlert('تم حفظ إعدادات منصة المتابعة بنجاح.','تم الحفظ')};
@@ -580,7 +623,7 @@ if(cloudUrl())syncCloud('load');
     gateEnter.onclick=wrappedEnter;
   }
   function install(){
-    localStorage.setItem('student_tracker_cloud_url',SYNC_URL);
+    if(SYNC_URL&&!localStorage.getItem('student_tracker_cloud_url'))localStorage.setItem('student_tracker_cloud_url',SYNC_URL);
     addSyncChip();
     applyTeacherIcons();
     bindLoginVoice();
@@ -594,11 +637,13 @@ if(cloudUrl())syncCloud('load');
         setSyncChip(status.includes('تمت')?'ok':status.includes('تعذرت')?'bad':'ok',status.includes('تمت')?'☁ تمت المزامنة السحابية':'☁ المزامنة السحابية جاهزة');
         return result;
       };
-      syncCloud('load');
+      if(localStorage.getItem('student_tracker_cloud_url'))syncCloud('load');
     }
-    document.getElementById('logout')?.addEventListener('click',stopTeacherAudio);
-    window.addEventListener('pagehide',stopTeacherAudio);
-    window.addEventListener('beforeunload',stopTeacherAudio);
+    const handleExit=()=>{stopTeacherAudio();if(typeof flushCloudBeforeExit==='function')flushCloudBeforeExit()};
+    document.getElementById('logout')?.addEventListener('click',handleExit);
+    window.addEventListener('pagehide',handleExit);
+    window.addEventListener('beforeunload',handleExit);
+    document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')handleExit()});
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',install,{once:true});else install();
 })();
