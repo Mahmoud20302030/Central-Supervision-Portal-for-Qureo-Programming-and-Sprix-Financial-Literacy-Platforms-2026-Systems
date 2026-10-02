@@ -200,7 +200,20 @@ body{background:linear-gradient(135deg,#eff8ff,#f9fbff 52%,#e9fff7);font-family:
 main.wrap{width:100%;flex:1}
 
 </style>
-<style>@media(max-width:600px){.footer-wrapper{height:auto;min-height:340px;padding:24px 8px}.circle-container{width:min(92vw,340px);height:min(92vw,340px)}.center-prayer{width:72%;font-size:clamp(1rem,5vw,1.5rem)}.text-path-style{font-size:17px;letter-spacing:3px}.name-highlight{font-size:22px;letter-spacing:2px}}.top h1:before{content:"✦ ";color:#f0c75e}.top{box-shadow:0 14px 35px #10294f24}</style></head>
+<style>@media(max-width:600px){.footer-wrapper{height:auto;min-height:340px;padding:24px 8px}.circle-container{width:min(92vw,340px);height:min(92vw,340px)}.center-prayer{width:72%;font-size:clamp(1rem,5vw,1.5rem)}.text-path-style{font-size:17px;letter-spacing:3px}.name-highlight{font-size:22px;letter-spacing:2px}}.top h1:before{content:"✦ ";color:#f0c75e}.top{box-shadow:0 14px 35px #10294f24}</style>
+<style id="joyful-theme-layer">
+/* طبقة ألوان مرحة للتطبيق فقط؛ لا تمس تنسيقات أو HTML الفوتر الأصلي. */
+:root{--navy:#153b66;--blue:#2878d0;--cyan:#08aeb5;--violet:#8759df;--mint:#16b88d;--gold:#ffc247;--bg:#f5f8ff;--ink:#1b3452;--line:#d6e4f4;--shadow:0 12px 34px rgba(25,74,128,.12)}
+body{background:radial-gradient(ellipse at 5% 10%,#ffe9f5aa,transparent 29%),radial-gradient(ellipse at 95% 22%,#dff8ffb8,transparent 27%),linear-gradient(135deg,#f7f8ff,#fff9f1 52%,#eafff5)!important}
+.top{background:linear-gradient(118deg,#1769aa 0%,#2587cf 31%,#8759df 68%,#08aeb5 100%);box-shadow:0 14px 35px #1769aa30}
+.bar,.panel,.stat{border-color:#e3eafa}.stat{transition:transform .2s,box-shadow .2s}.stat:hover{transform:translateY(-3px);box-shadow:0 16px 34px #245b8f20}
+.stat.q{background:linear-gradient(145deg,#fff,#f2f8ff)}.stat.s{background:linear-gradient(145deg,#fff,#effff8)}.stat.f{background:linear-gradient(145deg,#fff,#f7f1ff)}.stat.warn{background:linear-gradient(145deg,#fff,#fff9e9)}
+.primary{background:linear-gradient(120deg,#2878d0,#08aeb5)}.violet{background:linear-gradient(120deg,#8759df,#b36fe4)}.mint{background:linear-gradient(120deg,#16b88d,#56ce9f)}
+.teacher-card:nth-child(4n+1){box-shadow:inset 0 4px 0 #ffbf47,0 8px 22px #173d6010}.teacher-card:nth-child(4n+2){box-shadow:inset 0 4px 0 #30c1b5,0 8px 22px #173d6010}.teacher-card:nth-child(4n+3){box-shadow:inset 0 4px 0 #a875e8,0 8px 22px #173d6010}.teacher-card:nth-child(4n){box-shadow:inset 0 4px 0 #f08ab2,0 8px 22px #173d6010}
+.platform-profile-field{min-width:230px}.platform-profile-field select{border-color:#9cc9ef;background:linear-gradient(120deg,#f3f9ff,#f5fff9);font-weight:800}.platform-profile-field[hidden]{display:none!important}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
+</style>
+</head>
 <body>
 
 <div id="teacherGate" class="teacher-gate">
@@ -649,4 +662,191 @@ if(cloudUrl())syncCloud('load');
 })();
 </script>
 
+<script id="reliable-import-export-layer">
+(function(){
+  'use strict';
+  const MAX_ROW_FIELDS=16;
+  const BLOCKED_KEYS=new Set(['__proto__','prototype','constructor']);
+  const isRecord=value=>!!value&&typeof value==='object'&&!Array.isArray(value);
+  const safeKey=value=>{const key=String(value??'').trim();return key&&!BLOCKED_KEYS.has(key)?key:''};
+  const rowFromObject=(value,index)=>{
+    if(Array.isArray(value))return value.slice();
+    if(!isRecord(value))throw new Error('يوجد سجل طالب غير صالح داخل الملف.');
+    const row=Array(MAX_ROW_FIELDS).fill('');
+    const fields={0:['number','no','index'],1:['code','studentCode','student_code','كود الطالب'],2:['name','studentName','student_name','اسم الطالب'],11:['qureoStatus','qureo_status'],12:['qureoLevel','qureo_level'],13:['sprixStatus','sprix_status'],14:['sprixLevel','sprix_level'],15:['notes','comment','remarks','ملاحظات']};
+    for(const [idx,names] of Object.entries(fields))for(const name of names)if(value[name]!==undefined){row[Number(idx)]=value[name];break}
+    return row;
+  };
+  const normalizeClass=(raw,key)=>{
+    if(!isRecord(raw)||!Array.isArray(raw.students))throw new Error('بيانات الفصل «'+key+'» غير مكتملة؛ يجب أن تحتوي على قائمة students.');
+    const name=String(raw.name??key??'').trim();
+    const classKey=safeKey(name||key);
+    if(!classKey)throw new Error('اسم فصل غير صالح في الملف.');
+    const students=raw.students.map((item,i)=>{
+      const row=rowFromObject(item,i);
+      while(row.length<MAX_ROW_FIELDS)row.push('');
+      if(row[0]===null||row[0]==='')row[0]=i+1;
+      for(let j=1;j<MAX_ROW_FIELDS;j++)if(row[j]===null||row[j]===undefined)row[j]='';
+      return row;
+    });
+    return [classKey,{...raw,name:classKey,students}];
+  };
+  const normalizeClasses=raw=>{
+    if(!isRecord(raw))throw new Error('البيانات المستوردة ليست كائن JSON صالحًا.');
+    const result=Object.create(null);
+    for(const [key,value] of Object.entries(raw)){
+      if(!isRecord(value)||!Array.isArray(value.students))continue;
+      const [classKey,course]=normalizeClass(value,key);
+      result[classKey]=course;
+    }
+    if(!Object.keys(result).length)throw new Error('لم أجد فصلًا صالحًا. استخدم ملف فصل أو نسخة احتياطية JSON من المنصة.');
+    return result;
+  };
+  const studentIdentity=row=>{
+    const code=String(row[1]??'').trim().toLocaleLowerCase();
+    if(code)return 'code:'+code;
+    const name=String(row[2]??'').trim().replace(/\s+/g,' ').toLocaleLowerCase();
+    return name?'name:'+name:'';
+  };
+  const mergeCourses=(existing,incoming,key)=>{
+    if(!existing)return {...incoming,name:incoming.name||key,students:incoming.students.map((r,i)=>{const copy=r.slice();copy[0]=i+1;return copy})};
+    const rows=existing.students.map(r=>r.slice());
+    const byId=new Map();
+    rows.forEach((r,i)=>{const id=studentIdentity(r);if(id&&!byId.has(id))byId.set(id,i)});
+    for(const source of incoming.students){
+      const row=source.slice(),id=studentIdentity(row),idx=id?byId.get(id):undefined;
+      if(idx===undefined){const newIndex=rows.length;row[0]=newIndex+1;rows.push(row);if(id)byId.set(id,newIndex)}
+      else{
+        const target=rows[idx];
+        for(let j=1;j<Math.max(MAX_ROW_FIELDS,row.length);j++)if(row[j]!==''&&row[j]!==null&&row[j]!==undefined)target[j]=row[j];
+      }
+    }
+    rows.forEach((r,i)=>r[0]=i+1);
+    return {...existing,...incoming,name:incoming.name||existing.name||key,students:rows,max:incoming.max??existing.max};
+  };
+  function decodeImport(parsed){
+    let root=parsed;
+    if(isRecord(root)&&isRecord(root.data)&&(root.data.db||root.data.classes||root.data.students))root=root.data;
+    if(!isRecord(root))throw new Error('محتوى الملف غير صالح.');
+    let source,meta=root;
+    if(isRecord(root.class)&&Array.isArray(root.class.students))source={[root.class.name||root.classKey||'فصل مستورد']:root.class};
+    else if(isRecord(root.db))source=root.db;
+    else if(isRecord(root.classes))source=root.classes;
+    else if(Array.isArray(root.classes))source=Object.fromEntries(root.classes.map((c,i)=>[c?.name||('فصل '+(i+1)),c]));
+    else if(Array.isArray(root.students))source={[root.name||root.className||root.classKey||'فصل مستورد']:root};
+    else source=root;
+    return {classes:normalizeClasses(source),cfg:meta.cfg,teacherAccess:meta.teacherAccess,teachers:meta.teachers,format:meta.format};
+  }
+  function mergeDatabase(incoming){
+    const next={...db};
+    for(const [key,course] of Object.entries(incoming))next[key]=mergeCourses(next[key],course,key);
+    db=next;
+    if(!db[active]||!Object.keys(db).includes(active))active=Object.keys(incoming)[0]||Object.keys(db)[0];
+  }
+  function safeFilename(value){return String(value||'فصل').replace(/[\\/:*?"<>|\u0000-\u001f]/g,'_').replace(/\s+/g,'_').slice(0,90)||'فصل'}
+  function saveDownload(filename,payload){
+    const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json;charset=utf-8'});
+    const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=filename;a.style.display='none';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);
+  }
+  $('exp').onclick=()=>{
+    const course=db[active];if(!course)return uiAlert('اختر فصلًا صالحًا أولًا.','تعذر التصدير');
+    saveDownload('متابعة_'+safeFilename(course.name||active)+'.json',{format:'student-tracker-class',version:2,exportedAt:new Date().toISOString(),classKey:active,class:{...course,name:course.name||active}});
+  };
+  $('backup').onclick=()=>saveDownload('نسخة_احتياطية_متابعة_الطلاب.json',{format:'student-platform-tracker-backup',version:2,exportedAt:new Date().toISOString(),db,cfg,teacherAccess,teachers:TEACHERS});
+  $('file').onchange=async e=>{
+    const file=e.target.files?.[0];if(!file)return;
+    try{
+      const text=(await file.text()).replace(/^\uFEFF/,'').trim();
+      if(!text)throw new Error('الملف فارغ.');
+      const parsed=JSON.parse(text),payload=decodeImport(parsed);
+      const incomingKeys=Object.keys(payload.classes);
+      mergeDatabase(payload.classes);
+      active=incomingKeys[0]||active;
+      if(payload.cfg&&isRecord(payload.cfg)){
+        cfg={...cfg,...payload.cfg};
+        for(const key of ['main','sub','term','report'])if(typeof cfg[key]!=='string'||!cfg[key].trim())cfg[key]=({main:'منصة متابعة الطلاب — Qureo & Sprix',sub:'إدارة ميت غمر التعليمية | مدرسة محمد هاشم النقيب الثانوية المشتركة',term:'متابعة تقدم الطلاب على المنصات التعليمية — العام الدراسي 2026/2027',report:'سجل متابعة تقدم الطلاب على المنصات التعليمية'})[key];
+        localStorage.setItem(cfgKey,JSON.stringify(cfg));
+      }
+      if(payload.teacherAccess){teacherAccess=normalizeTeacherAccess(payload.teacherAccess);persistTeacherAccess()}
+      if(Array.isArray(payload.teachers)){TEACHERS=[...new Set(payload.teachers.map(v=>String(v??'').trim()).filter(Boolean))];persistTeachers()}
+      // Refresh the class selector and assignment checkboxes immediately. New classes
+      // are visible in Settings > teacher/class assignment, but remain unassigned until selected.
+      render();renderTeacherCards();buildTeacherManagement();save();
+      const names=incomingKeys.map(k=>db[k]?.name||k).join('، ');
+      await uiAlert('تم استيراد '+incomingKeys.length.toLocaleString('ar-EG')+' فصل بنجاح: '+names+'. الفصول الجديدة متاحة الآن في نافذة إسناد الفصول للمعلمين. عند تكرار الطالب تم دمج بياناته دون إنشاء صف مكرر.','اكتمل الاستيراد');
+    }catch(err){
+      console.error('Import error:',err);
+      await uiAlert('تعذر استيراد الملف: '+(err?.message||'تحقق من أن الملف JSON صالح ومُصدّر من المنصة.'),'فشل الاستيراد');
+    }finally{e.target.value=''}
+  };
+})();
+</script>
+<script id="class-platform-profile-layer">
+(function(){
+  'use strict';
+  const validProfiles=new Set(['auto','first','second','programming','financial','both','none']);
+  function gradeFromName(value){
+    const text=String(value??'').normalize('NFKC').toLowerCase()
+      .replace(/[٠-٩]/g,d=>String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
+      .replace(/[أإآ]/g,'ا').replace(/ى/g,'ي').replace(/ـ/g,'').replace(/\s+/g,' ').trim();
+    if(!text)return '';
+    if(/(?:second|2nd)\s+(?:secondary|grade)|(?:الصف\s*)?(?:الثاني|ثاني)\s*(?:الثانوي|ثانوي)|(?:الصف|صف)\s*2\s*(?:الثانوي|ثانوي)/.test(text))return 'second';
+    if(/(?:first|1st)\s+(?:secondary|grade)|(?:الصف\s*)?(?:الاول|اولى|الاولى|اول)\s*(?:الثانوي|ثانوي)|(?:الصف|صف)\s*1\s*(?:الثانوي|ثانوي)/.test(text))return 'first';
+    // In the legacy class IDs (for example 4-1, 2-2 and 6-2 مالية),
+    // the final digit identifies the grade, not the section number.
+    const id=text.match(/(?:^|[^0-9])\d+\s*[-–_/\\]\s*([12])(?=\D|$)/);
+    if(id)return id[1]==='1'?'first':'second';
+    return '';
+  }
+  function profileFor(name){
+    const course=db?.[name]||{};
+    const saved=String(course.platformProfile||'auto').toLowerCase();
+    if(validProfiles.has(saved)&&saved!=='auto'){
+      // Migrate choices saved by the previous version without changing their meaning.
+      if(saved==='first')return 'programming';
+      if(saved==='second')return 'financial';
+      return saved;
+    }
+    const declared=String(course.gradeLevel??course.grade??'').normalize('NFKC').toLowerCase().trim();
+    if(['first','1','اول','الأول','الاول','الصف الأول','الصف الاول'].includes(declared))return 'programming';
+    if(['second','2','ثاني','الثاني','الصف الثاني','الصف الثانى'].includes(declared))return 'both';
+    // Retain the historic Qureo exception for the 6-2 class.
+    if(String(name).trim()==='6-2')return 'both';
+    const grade=gradeFromName(course.name||name);
+    // An unfamiliar label must not silently disable either platform.
+    return grade==='first'?'programming':grade==='second'?'both':'both';
+  }
+  isQureoClass=function(name){const profile=profileFor(name);return profile==='first'||profile==='programming'||profile==='both'};
+  isSprixClass=function(name){const profile=profileFor(name);return profile==='second'||profile==='financial'||profile==='both'};
+  const baseRender=render;
+  function drawPlatformProfile(){
+    const picker=$('pick'),host=picker?.closest('.field');if(!host)return;
+    let field=$('platformProfileField');
+    if(!field){
+      field=document.createElement('div');field.id='platformProfileField';field.className='field platform-profile-field';
+      const label=document.createElement('label');label.htmlFor='platformProfile';label.textContent='اختيار منصات الفصل';
+      const select=document.createElement('select');select.id='platformProfile';select.setAttribute('aria-label','اختيار منصات الفصل');
+      select.innerHTML='<option value="auto">تلقائي حسب الصف</option><option value="programming">البرمجة فقط — Qureo</option><option value="financial">الثقافة المالية فقط — Sprix</option><option value="both">البرمجة والثقافة المالية — تفعيل المنصتين</option><option value="none">إيقاف المنصتين لهذا الفصل</option>';
+      field.append(label,select);host.insertAdjacentElement('afterend',field);
+      select.onchange=()=>{if(!db[active])return;db[active].platformProfile=select.value;save();render()};
+    }
+    field.hidden=!isSupervisor();
+    const select=$('platformProfile'),course=db[active]||{},stored=String(course.platformProfile||'auto');
+    const selected=stored==='first'?'programming':stored==='second'?'financial':validProfiles.has(stored)?stored:'auto';
+    select.value=selected;
+    const guessed=gradeFromName(course.name||active);
+    const first=select.options[0];
+    first.textContent=guessed==='first'?'تلقائي — الأول الثانوي: البرمجة فقط':guessed==='second'?'تلقائي — الثاني الثانوي: البرمجة والثقافة المالية':'تلقائي — الصف غير محدد؛ المنصتان متاحتان';
+    const note=$('classScopeNote');
+    if(note){
+      const q=isQureoClass(active),sp=isSprixClass(active);
+      note.textContent='Qureo (منصة البرمجة) '+(q?'مفعّلة':'غير مفعّلة')+' لهذا الفصل. Sprix (منصة الثقافة المالية) '+(sp?'مفعّلة':'غير مفعّلة')+'. '+(stored==='auto'&&!guessed?'لم يُستدل على الصف من الاسم؛ المنصتان متاحتان افتراضيًا. اختر المنصة المناسبة من قائمة «اختيار منصات الفصل».':'يمكن للمشرف اختيار البرمجة فقط أو الثقافة المالية فقط أو تفعيل المنصتين معًا، ويُحفظ الاختيار مع الفصل.');
+      const course=db[active],qCount=q?course.students.filter(r=>r[11]==='active').length:0,sCount=sp?course.students.filter(r=>r[13]==='active').length:0,followCount=course.students.filter(r=>(q&&['follow','issue'].includes(r[11]))||(sp&&['follow','issue'].includes(r[13]))).length;
+      $('qActive').textContent=qCount.toLocaleString('ar-EG');$('sActive').textContent=sCount.toLocaleString('ar-EG');$('followCount').textContent=followCount.toLocaleString('ar-EG');
+    }
+  }
+  render=function(){baseRender();drawPlatformProfile()};
+  render();
+})();
+</script>
 </body></html>
